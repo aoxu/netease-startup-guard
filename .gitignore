@@ -1,0 +1,38 @@
+# Local credentials and environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Machine-specific guard state: never publish
+backup.json
+*-backup.json
+config.json
+heartbeat.json
+uninstalled.json
+request.json
+verification*.json
+test-result.json
+result.txt
+complete.txt
+stderr.txt
+restore-test*.txt
+*.log
+
+# Runtime, scratch work, and distribution archives
+/runtime/
+/work/
+/outputs/
+*.zip
+*.tmp
+*.bak
+__pycache__/
+*.py[cod]
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini

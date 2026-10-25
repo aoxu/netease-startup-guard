@@ -1,0 +1,4 @@
+interface:
+  display_name: "网易云开机启动守护"
+  short_description: "在 Windows 安装网易云自启动守护，验证并支持卸载恢复"
+  default_prompt: "使用 $netease-startup-guard 在这台 Windows 电脑安装网易云自启动守护，并验证手动打开和卸载恢复。"
