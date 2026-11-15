@@ -9,7 +9,8 @@ if($ExpectedSid -notmatch '^S-1-5-21-(\d+-){3}\d+$'){throw 'Supply a verified in
 $jobRoot=[IO.Path]::GetFullPath($JobDirectory)
 if(Test-Path $jobRoot){throw 'Use a new job directory for each run'}
 New-Item -ItemType Directory -Path $jobRoot -Force|Out-Null
-foreach($f in @('Common.ps1','Manage.ps1','Guard.ps1')){Copy-Item -LiteralPath (Join-Path $PSScriptRoot $f) -Destination (Join-Path $jobRoot $f)}
+foreach($f in @('Common.ps1','Manage.ps1','Build-Hosts.ps1','GuardHost.cs','WindowlessRunner.cs')){Copy-Item -LiteralPath (Join-Path $PSScriptRoot $f) -Destination (Join-Path $jobRoot $f)}
+& "$jobRoot\Build-Hosts.ps1" -OutputDirectory $jobRoot
 $params=@{ExpectedSid=$ExpectedSid;Action=$Action}
 if($ExePath){$params.ExePath=$ExePath};if($ExpectedCommand){$params.ExpectedCommand=$ExpectedCommand};if($RuntimeDirectory){$params.RuntimeDirectory=$RuntimeDirectory}
 $params|ConvertTo-Json|Set-Content -LiteralPath "$jobRoot\request.json" -Encoding UTF8
@@ -25,7 +26,7 @@ try {
 $name='Codex-NCMGuard-Setup-'+[Guid]::NewGuid().ToString('N')
 $registered=$false
 try {
- $actionObject=New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Argument ('-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+$jobRoot+'\job.ps1"')
+ $actionObject=New-ScheduledTaskAction -Execute (Join-Path $jobRoot 'WindowlessRunner.exe') -Argument ('"'+$jobRoot+'\job.ps1"')
  $principal=New-ScheduledTaskPrincipal -UserId $ExpectedSid -LogonType Interactive -RunLevel Limited
  Register-ScheduledTask -TaskName $name -Action $actionObject -Principal $principal|Out-Null
  $registered=$true;Start-ScheduledTask $name

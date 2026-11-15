@@ -15,7 +15,7 @@ $configFile=Join-Path $RuntimeDirectory 'config.json'
 $backupFile=Join-Path $RuntimeDirectory 'backup.json'
 function Get-GuardStatus {
  $task=Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
- [pscustomobject]@{Account=$id.Name;Sid=$ExpectedSid;Runtime=$RuntimeDirectory;TaskName=$taskName;State=if($task){[string]$task.State}else{'Absent'};Run=(Save-Value $runPath 'cloudmusic');Approval=(Save-Value $approvedPath 'cloudmusic');Heartbeat=if(Test-Path "$RuntimeDirectory\heartbeat.json"){Read-Json "$RuntimeDirectory\heartbeat.json"}else{$null}}
+ [pscustomobject]@{Account=$id.Name;Sid=$ExpectedSid;Runtime=$RuntimeDirectory;TaskName=$taskName;State=if($task){[string]$task.State}else{'Absent'};Execute=if($task){$task.Actions.Execute}else{$null};Run=(Save-Value $runPath 'cloudmusic');Approval=(Save-Value $approvedPath 'cloudmusic');Heartbeat=if(Test-Path "$RuntimeDirectory\heartbeat.json"){Read-Json "$RuntimeDirectory\heartbeat.json"}else{$null}}
 }
 if($Action -eq 'Inspect') {
  $candidates=@(@("$env:ProgramFiles\NetEase\CloudMusic\cloudmusic.exe", "${env:ProgramFiles(x86)}\NetEase\CloudMusic\cloudmusic.exe", "$env:LOCALAPPDATA\NetEase\CloudMusic\cloudmusic.exe") | Where-Object {Test-Path -LiteralPath $_})
@@ -47,7 +47,7 @@ if($Action -eq 'Install') {
   if($old.Sid -ne $ExpectedSid){throw 'Backup belongs to a different user'}
   if(-not(Test-Path "$RuntimeDirectory\uninstalled.json")){throw 'Existing incomplete install/backup: inspect or uninstall before retrying.'}
  } else {Write-Json ([pscustomobject]@{Sid=$ExpectedSid;Account=$id.Name;At=(Get-Date -Format o);Values=@($existing,(Save-Value $approvedPath 'cloudmusic'))}) $backupFile}
- foreach($file in @('Common.ps1','Guard.ps1','Manage.ps1')) {
+ foreach($file in @('Common.ps1','GuardHost.cs','WindowlessRunner.cs','Build-Hosts.ps1','Manage.ps1')) {
   $source=Join-Path $PSScriptRoot $file;$dest=Join-Path $RuntimeDirectory $file
   if([IO.Path]::GetFullPath($source) -ine [IO.Path]::GetFullPath($dest)){Copy-Item -LiteralPath $source -Destination $dest -Force}
  }
@@ -57,7 +57,10 @@ if($Action -eq 'Install') {
  [IO.File]::WriteAllText((Join-Path $RuntimeDirectory 'Uninstall-and-restore.cmd'),$cmd,[Text.Encoding]::ASCII)
  $created=$false
  try {
-  $taskAction=New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Argument ('-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+$RuntimeDirectory+'\Guard.ps1" -ConfigPath "'+$configFile+'"') -WorkingDirectory $RuntimeDirectory
+  & "$RuntimeDirectory\Build-Hosts.ps1" -OutputDirectory $RuntimeDirectory
+  $runKey=Open-UserKey $runPath $true
+  $runKey.Dispose()
+  $taskAction=New-ScheduledTaskAction -Execute (Join-Path $RuntimeDirectory 'NetEaseStartupGuard.exe') -Argument ('"'+$configFile+'"') -WorkingDirectory $RuntimeDirectory
   $trigger=New-ScheduledTaskTrigger -AtLogOn -User $ExpectedSid
   $principal=New-ScheduledTaskPrincipal -UserId $ExpectedSid -LogonType Interactive -RunLevel Limited
   $settings=New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew -StartWhenAvailable
@@ -79,6 +82,10 @@ $config=Read-Json $configFile;$backup=Read-Json $backupFile
 if($config.Sid -ne $ExpectedSid -or $backup.Sid -ne $ExpectedSid -or $config.TaskName -ne $taskName){throw 'Runtime identity mismatch'}
 if($Action -eq 'Verify') {
  if((Get-ScheduledTask $taskName).State -ne 'Running'){throw 'Guard is not running'}
+ $heartbeat=Read-Json "$RuntimeDirectory\heartbeat.json"
+ if($heartbeat.Host -ne 'native-winexe' -or $heartbeat.ConsoleHandle -ne 0 -or ([DateTimeOffset]::Now-[DateTimeOffset]::Parse($heartbeat.At)).TotalSeconds -gt 90){throw 'Native windowless guard liveness check failed; upgrade old PowerShell installations first.'}
+ $process=Get-Process -Id $heartbeat.Pid -ErrorAction Stop
+ if($process.Path -ine (Join-Path $RuntimeDirectory 'NetEaseStartupGuard.exe') -or $process.MainWindowHandle -ne 0){throw 'Guard process/window mismatch'}
  $before=Save-Value $runPath 'cloudmusic'
  $approval=Save-Value $approvedPath 'cloudmusic'
  if($before.Exists){throw 'Unexpected existing value; inspect before simulation'}

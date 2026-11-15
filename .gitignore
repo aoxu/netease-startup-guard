@@ -25,6 +25,8 @@ restore-test*.txt
 /work/
 /outputs/
 *.zip
+*.exe
+*.pdb
 *.tmp
 *.bak
 __pycache__/

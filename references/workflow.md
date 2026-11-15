@@ -35,14 +35,14 @@ Inspect 输出的 Run 命令是最可靠的路径线索之一；确认文件存�
 
 生产运行目录默认是**实际交互用户**的 `%LOCALAPPDATA%\Codex\NetEaseStartupGuard`，与下载的 Skill 文件夹独立。不要传入命令执行环境推导的 LocalAppData。状态输出会返回实际路径。任务名包含本机 SID。
 
-安装时已有同名守护不会覆盖；发现旧 NetEaseStartupGuard 任务会拒绝叠加。迁移需先确认旧任务、备份与恢复策略，不能直接注销不明任务。
+安装时已有同名守护不会覆盖。若它还执行 powershell.exe，保存已核实的原配置参数，使用新 Skill 的 Uninstall 先卸载并验证恢复，再向同一 RuntimeDirectory 执行 Install 与 Verify；首次 backup.json 必须保留。安装成功前不能把升级报告为完成。发现旧 NetEaseStartupGuard 任务会拒绝叠加。迁移需先确认旧任务、备份与恢复策略，不能直接注销不明任务。
 
 ```powershell
 & "$skill\scripts\Invoke-Interactive.ps1" -ExpectedSid $sid -Action Verify -JobDirectory $newJobDirectory
 & "$skill\scripts\Invoke-Interactive.ps1" -ExpectedSid $sid -Action Status -JobDirectory $newJobDirectory
 ```
 
-检查任务 Running、最近 90 秒内心跳、Run 值缺失和模拟 PASS。心跳每分钟刷新一次，只证明进程存活；不代替模拟测试。守护无 UI，不影响普通 EXE 启动路径。用户要求手动打开验证时，用现有程序的正常入口打开并检查窗口；可以通过当前可用 computer-use 工具或用户观察确认。只看到进程时明确证据限制。
+检查任务 Running、Execute 指向运行目录的 NetEaseStartupGuard.exe、最近 90 秒内心跳 Host=native-winexe / ConsoleHandle=0、进程无主窗口、Run 值缺失和模拟 PASS。心跳每分钟刷新一次，只证明进程存活；不代替模拟测试。守护无 UI，不影响普通 EXE 启动路径。用户要求手动打开验证时，用现有程序的正常入口打开并检查窗口；可以通过当前可用 computer-use 工具或用户观察确认。只看到进程时明确证据限制。
 
 ## 卸载及恢复测试
 
@@ -61,8 +61,12 @@ Codex 用 Invoke-Interactive 的 Uninstall 动作获得同等效果。卸载会�
 
 ## 本包验证与来源
 
-运行 `scripts/Test-Isolated.ps1 -WorkDirectory <workspace/work>` 验证独立键的事件监听和恢复函数。脚本不创建登录任务、不调用网易云、不接触真实 Run。
+运行 `scripts/Test-Isolated.ps1 -WorkDirectory <workspace/work>` 验证独立键的事件监听和恢复函数。脚本不创建登录任务、不调用网易云、不接触真实 Run；同时检查 EXE 的 Windows 子系统类型、控制台句柄和主窗口句柄。
 
 Windows 注册表变更通知：[Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regnotifychangekeyvalue)。注册表权限作用于键：[Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/sysinfo/registry-key-security-and-access-rights)。
 
 隔离测试并不能证明所有电脑上都可安装，也不能证明播放器更新/音频播放功能；目标电脑必须按前述流程验收。
+
+## 无窗口编译依赖
+
+Build-Hosts.ps1 使用 Windows 自带的 .NET Framework x64 csc.exe，将 GuardHost.cs 和 WindowlessRunner.cs 编译为 /target:winexe。守护直接监听注册表，无 PowerShell 子进程；临时安装任务的入口用 CreateNoWindow 启动短时 PowerShell 工作。编译失败时停止并报告，不下载编译器、不禁用安全策略、不回退 -WindowStyle Hidden。不要把任务设置中的 Hidden 属性当作隐藏窗口的替代品。

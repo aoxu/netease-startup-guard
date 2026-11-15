@@ -16,7 +16,7 @@
 更新程序重新写入相同启动项 → 匹配名称与完整命令 → 清除该值
 ```
 
-计划任务以当前用户的普通权限运行，不保存密码。守护常驻一个 Windows PowerShell 进程，通过注册表事件通知触发检查，每分钟刷新一次状态记录；不是每分钟轮询删除启动项。
+计划任务以当前用户的普通权限运行，不保存密码。守护常驻一个无控制台的原生 Windows 进程，通过注册表事件通知触发检查，每分钟刷新一次状态记录；不是每分钟轮询删除启动项。
 
 当前支持的入口：
 
@@ -28,11 +28,11 @@
 | 匹配方式 | 与安装时核实并保存的完整命令精确匹配 |
 | 原有 Windows 禁用记录 | 保留并备份，卸载时恢复 |
 
-实现依据：[微软注册表变更通知文档](https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regnotifychangekeyvalue)。具体行为可查看 [Guard.ps1](scripts/Guard.ps1) 和 [Manage.ps1](scripts/Manage.ps1)。
+实现依据：[微软注册表变更通知文档](https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regnotifychangekeyvalue)。具体行为可查看 [GuardHost.cs](scripts/GuardHost.cs) 和 [Manage.ps1](scripts/Manage.ps1)。
 
 ## 在其他电脑安装
 
-适用于具有 Windows PowerShell 5.1、计划任务功能及实际登录用户桌面的 Windows 环境。Codex 需要具备执行本地脚本、读取注册表及登记当前用户任务的权限。电脑管理策略可能限制这些操作；本 Skill 不绕过安全策略。
+适用于具有 Windows PowerShell 5.1、.NET Framework 4.x 的 x64 C# 编译器、计划任务功能及实际登录用户桌面的 Windows 环境。Codex 需要具备执行本地脚本、读取注册表及登记当前用户任务的权限。电脑管理策略可能限制这些操作；本 Skill 不绕过安全策略。
 
 ### 方式一：让 Codex 安装 Skill
 
@@ -70,6 +70,18 @@
 
 正式任务名为 `Codex-NetEaseStartupGuard-<用户SID>`。首次备份保存在 `backup.json`，不会随重复安装被覆盖。运行目录独立于 Skill 源码目录，使用期间不要删除运行目录。
 
+## 已安装旧版：修复开机黑窗口
+
+早期版本直接执行 `powershell.exe -WindowStyle Hidden`。Windows Terminal 存在不遵循该参数的已知问题（[微软问题记录](https://github.com/microsoft/terminal/issues/12464)），因此可能在登录时出现黑窗口。
+
+当前版本从源码在本机编译 Windows 子系统的 EXE，由计划任务直接运行；持续监听不再启动 PowerShell 子进程。安装和检查用的临时任务也通过无窗口入口运行。缺少编译器或被电脑策略阻止时会报错，不回退到旧启动方式。仓库只提供源码，不提交本机编译产物。
+
+**仅更新 Skill 不会替换已经安装的守护。** 更新 Skill 后，对 Codex 说：
+
+> 使用 $netease-startup-guard 将已有守护升级为无窗口版本。保留首次备份，验证旧任务卸载及配置恢复，再安装新版本，验证自动清理、无控制台和卸载恢复，最终保持守护运行。
+
+Codex 应先读取原运行目录与命令，使用新 Skill 的 Uninstall 动作停止旧任务、恢复并核对备份，再向同一运行目录 Install、Verify。不要删除 backup.json，也不要使用另一台电脑的配置。更早的任务名 NetEaseStartupGuard 属于另一种安装布局，需单独查证，脚本不会自动覆盖。
+
 ## 检查、卸载和恢复
 
 可直接对 Codex 说：
@@ -106,10 +118,12 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-Isolated.
 
 当前已验证：
 
+- 无控制台程序格式、控制台句柄为零、无主窗口。
 - 初始匹配项清理与连续变更事件处理。
 - 非匹配命令和其他注册表值保留。
 - 二进制配置与原本不存在的值恢复。
 - 交互式任务派发及实际用户状态读取。
+- 隔离任务和测试键下的安装、验证、卸载恢复、重新安装及首次备份保留。
 
 以上基于本项目本机隔离测试和检查，不代表已经覆盖所有 Windows 电脑。可移植版本仍需在每台目标电脑验收安装、卸载、手动打开、重启登录和下一次真实更新。
 
@@ -120,7 +134,9 @@ SKILL.md                       Codex 操作指引
 agents/openai.yaml             Skill 展示信息
 references/workflow.md         参数、迁移与验收说明
 scripts/Common.ps1             注册表备份与恢复
-scripts/Guard.ps1              事件监听守护
+scripts/GuardHost.cs           无控制台事件监听守护源码
+scripts/WindowlessRunner.cs    无窗口临时检查任务入口
+scripts/Build-Hosts.ps1        在本机编译 Windows 子系统程序
 scripts/Manage.ps1             检查、安装、验证、卸载
 scripts/Invoke-Interactive.ps1  交互式账户任务派发
 scripts/Test-Isolated.ps1       隔离行为测试
